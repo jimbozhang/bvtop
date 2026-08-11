@@ -1,0 +1,11 @@
+[package]
+name = "bvtop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nvml-wrapper = "0.10"
+ratatui = "0.29"
+crossterm = "0.28"
+anyhow = "1"
+unicode-width = "0.2"

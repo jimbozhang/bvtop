@@ -41,7 +41,7 @@ impl App {
         match (self.mem_used_gb(), self.mem_total_gb()) {
             (Some(used), Some(total)) => format!("{:.1}/{:.1}", used, total),
             (Some(used), None) => format!("{:.1}", used),
-            _ => "N/A".to_string(),
+            _ => "0".to_string(),
         }
     }
 
@@ -50,7 +50,7 @@ impl App {
         if self.power_usage > 0 {
             format!("{:.1}", self.power_usage as f64 / 1000.0)
         } else {
-            "N/A".to_string()
+            "0".to_string()
         }
     }
 }

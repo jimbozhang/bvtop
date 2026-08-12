@@ -75,7 +75,7 @@ fn detect_char_width() -> u16 {
 
 fn main() -> Result<()> {
     let gpu_ctx = GpuContext::new()?;
-    check_single_process(&gpu_ctx)?;
+    check_process_count(&gpu_ctx)?;
 
     // Detect terminal char width before entering alternate screen
     let char_width = detect_char_width();
@@ -119,12 +119,7 @@ fn main() -> Result<()> {
 
         if last_tick.elapsed() >= tick_rate {
             match gpu_ctx.process_count() {
-                Ok(1) => {}
-                Ok(0) => {
-                    cleanup(&mut terminal)?;
-                    eprintln!("GPU process exited.");
-                    break;
-                }
+                Ok(0) | Ok(1) => {}
                 Ok(n) => {
                     cleanup(&mut terminal)?;
                     eprintln!("Multiple GPU processes detected ({}). Exiting.", n);
@@ -154,16 +149,15 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn check_single_process(gpu: &GpuContext) -> Result<usize> {
+fn check_process_count(gpu: &GpuContext) -> Result<usize> {
     let count = gpu.process_count()?;
-    match count {
-        0 => bail!("No GPU process detected. bvtop requires exactly 1 GPU process running."),
-        1 => Ok(1),
-        n => bail!(
+    if count > 1 {
+        bail!(
             "Multiple GPU processes detected ({}). bvtop only supports monitoring a single process.",
-            n
-        ),
+            count
+        );
     }
+    Ok(count)
 }
 
 fn cleanup(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {

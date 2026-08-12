@@ -56,11 +56,7 @@ impl GpuContext {
                         UsedGpuMemory::Unavailable => 0,
                     })
                     .sum();
-                if used > 0 {
-                    (Some(used), None) // total unknown
-                } else {
-                    (None, None)
-                }
+                (Some(used), None)
             }
         };
 

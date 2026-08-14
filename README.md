@@ -17,4 +17,3 @@ A minimal GPU monitor for viewing over SSH on small screens.
 ## Constraints
 
 - **Single GPU only.** Refuses to start if multiple GPUs are detected.
-- **Single process only.** Refuses to start if the GPU has more than one compute process.

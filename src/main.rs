@@ -5,7 +5,7 @@ mod ui;
 use std::io::{self, Read as _, Write as _};
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -75,7 +75,6 @@ fn detect_char_width() -> u16 {
 
 fn main() -> Result<()> {
     let gpu_ctx = GpuContext::new()?;
-    check_process_count(&gpu_ctx)?;
 
     // Detect terminal char width before entering alternate screen
     let char_width = detect_char_width();
@@ -118,20 +117,6 @@ fn main() -> Result<()> {
         }
 
         if last_tick.elapsed() >= tick_rate {
-            match gpu_ctx.process_count() {
-                Ok(0) | Ok(1) => {}
-                Ok(n) => {
-                    cleanup(&mut terminal)?;
-                    eprintln!("Multiple GPU processes detected ({}). Exiting.", n);
-                    break;
-                }
-                Err(e) => {
-                    cleanup(&mut terminal)?;
-                    eprintln!("NVML error: {}", e);
-                    break;
-                }
-            }
-
             match gpu_ctx.query() {
                 Ok(info) => app.update(&info),
                 Err(e) => {
@@ -147,17 +132,6 @@ fn main() -> Result<()> {
 
     cleanup(&mut terminal)?;
     Ok(())
-}
-
-fn check_process_count(gpu: &GpuContext) -> Result<usize> {
-    let count = gpu.process_count()?;
-    if count > 1 {
-        bail!(
-            "Multiple GPU processes detected ({}). bvtop only supports monitoring a single process.",
-            count
-        );
-    }
-    Ok(count)
 }
 
 fn cleanup(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {

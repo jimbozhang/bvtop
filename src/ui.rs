@@ -41,31 +41,71 @@ fn glyph_for(ch: char, row: usize) -> &'static str {
     }
 }
 
-/// Style: █ = White (body), box-drawing = Gray (outline), space = default
-fn styled_line(text: &str, row: usize) -> Line<'static> {
+// ── Palette ────────────────────────────────────────────────────
+
+/// Background tint for 10%..=89% GPU utilization.
+const UTIL_BG_BUSY: Color = Color::Rgb(0xB8, 0xDC, 0xFE);
+/// Background tint for >= 90% GPU utilization.
+const UTIL_BG_HIGH: Color = Color::Rgb(0xFF, 0xA9, 0x03);
+
+/// Colors used to render the dashboard at a given GPU utilization.
+#[derive(Clone, Copy)]
+struct Palette {
+    bg: Color,
+    label: Color,
+    body: Color,
+    outline: Color,
+}
+
+impl Palette {
+    fn for_util(util: u32) -> Self {
+        if util < 10 {
+            // Terminal default background; original color scheme.
+            Self {
+                bg: Color::Reset,
+                label: Color::Cyan,
+                body: Color::White,
+                outline: Color::DarkGray,
+            }
+        } else {
+            // Light background tint: switch to black ink for legibility.
+            Self {
+                bg: if util < 90 {
+                    UTIL_BG_BUSY
+                } else {
+                    UTIL_BG_HIGH
+                },
+                label: Color::Black,
+                body: Color::Black,
+                outline: Color::Black,
+            }
+        }
+    }
+}
+
+/// Style: █ = body color, box-drawing/space = outline color
+fn styled_line(text: &str, row: usize, palette: Palette) -> Line<'static> {
     let mut spans = Vec::new();
     for ch in text.chars() {
         let glyph = glyph_for(ch, row);
         for c in glyph.chars() {
             let color = match c {
-                '\u{2588}' => Color::White, // █ full block → bright body
-                '\u{2550}'..='\u{256F}' | '\u{2570}'..='\u{257F}' => Color::DarkGray, // box-drawing → outline
-                _ => Color::DarkGray, // space → invisible but set color anyway
+                '\u{2588}' => palette.body, // █ full block → body
+                _ => palette.outline,       // box-drawing / space → outline
             };
-            let s: &str = Box::leak(c.to_string().into_boxed_str());
-            spans.push(Span::styled(s, Style::default().fg(color)));
+            spans.push(Span::styled(c.to_string(), Style::default().fg(color)));
         }
     }
     Line::from(spans)
 }
 
-fn render_big_text_lines(text: &str) -> Vec<Line<'static>> {
-    (0..5).map(|row| styled_line(text, row)).collect()
+fn render_big_text_lines(text: &str, palette: Palette) -> Vec<Line<'static>> {
+    (0..5).map(|row| styled_line(text, row, palette)).collect()
 }
 
 // ── UI ─────────────────────────────────────────────────────────
 
-fn render_quadrant(f: &mut Frame, area: Rect, label: &str, value: &str) {
+fn render_quadrant(f: &mut Frame, area: Rect, label: &str, value: &str, palette: Palette) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -80,25 +120,30 @@ fn render_quadrant(f: &mut Frame, area: Rect, label: &str, value: &str) {
         .constraints([Constraint::Length(1), Constraint::Length(5)])
         .split(outer[1]);
 
-    // Label: cyan, centered
+    // Label: palette label color, centered
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             label,
             Style::default()
-                .fg(Color::Cyan)
+                .fg(palette.label)
                 .add_modifier(Modifier::BOLD),
         )))
         .alignment(Alignment::Center),
         inner[0],
     );
 
-    // Big digits: styled (white body + gray outline), centered
-    let lines = render_big_text_lines(value);
+    // Big digits: styled (body + outline), centered
+    let lines = render_big_text_lines(value, palette);
     f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner[1]);
 }
 
 pub fn draw(f: &mut Frame, app: &App, _char_width: u16) {
     let size = f.area();
+    let palette = Palette::for_util(app.gpu_util);
+
+    // Tint the whole background; Color::Reset restores the terminal default.
+    f.buffer_mut()
+        .set_style(size, Style::default().bg(palette.bg));
 
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -120,15 +165,29 @@ pub fn draw(f: &mut Frame, app: &App, _char_width: u16) {
         top_cols[0],
         "GPU UTILIZATION (%)",
         &app.gpu_util.to_string(),
+        palette,
     );
-    render_quadrant(f, top_cols[1], "VRAM USAGE (GB)", &app.mem_val_display());
+    render_quadrant(
+        f,
+        top_cols[1],
+        "VRAM USAGE (GB)",
+        &app.mem_val_display(),
+        palette,
+    );
     render_quadrant(
         f,
         bottom_cols[0],
         "TEMPERATURE (°C)",
         &app.temperature.to_string(),
+        palette,
     );
-    render_quadrant(f, bottom_cols[1], "POWER (W)", &app.power_val_display());
+    render_quadrant(
+        f,
+        bottom_cols[1],
+        "POWER (W)",
+        &app.power_val_display(),
+        palette,
+    );
 }
 
 pub fn draw_too_small(f: &mut Frame, cols: u16, rows: u16) {
@@ -151,4 +210,33 @@ pub fn draw_too_small(f: &mut Frame, cols: u16, rows: u16) {
         ])
         .split(area);
     f.render_widget(para, outer[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::App;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    fn bg_at(util: u32, x: u16, y: u16) -> Color {
+        let mut app = App::new();
+        app.gpu_util = util;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|f| draw(f, &app, 1)).unwrap();
+        terminal.backend().buffer()[(x, y)].bg
+    }
+
+    #[test]
+    fn background_reflects_utilization() {
+        // Below 10%: terminal default background.
+        assert_eq!(bg_at(0, 0, 0), Color::Reset);
+        assert_eq!(bg_at(9, 20, 6), Color::Reset);
+        // 10%..=89%: light blue.
+        assert_eq!(bg_at(10, 0, 0), UTIL_BG_BUSY);
+        assert_eq!(bg_at(89, 20, 6), UTIL_BG_BUSY);
+        // >= 90%: amber, including cells covered by widgets.
+        assert_eq!(bg_at(90, 0, 0), UTIL_BG_HIGH);
+        assert_eq!(bg_at(100, 20, 6), UTIL_BG_HIGH);
+        assert_eq!(bg_at(100, 79, 23), UTIL_BG_HIGH);
+    }
 }

@@ -43,7 +43,7 @@ fn glyph_for(ch: char, row: usize) -> &'static str {
 
 // ── Palette ────────────────────────────────────────────────────
 
-/// Background tint for 10%..=89% GPU utilization.
+/// Background tint for 1%..=89% GPU utilization.
 const UTIL_BG_BUSY: Color = Color::Rgb(0xB8, 0xDC, 0xFE);
 /// Background tint for >= 90% GPU utilization.
 const UTIL_BG_HIGH: Color = Color::Rgb(0xFF, 0xA9, 0x03);
@@ -59,7 +59,7 @@ struct Palette {
 
 impl Palette {
     fn for_util(util: u32) -> Self {
-        if util < 10 {
+        if util == 0 {
             // Terminal default background; original color scheme.
             Self {
                 bg: Color::Reset,
@@ -228,11 +228,11 @@ mod tests {
 
     #[test]
     fn background_reflects_utilization() {
-        // Below 10%: terminal default background.
+        // 0%: terminal default background.
         assert_eq!(bg_at(0, 0, 0), Color::Reset);
-        assert_eq!(bg_at(9, 20, 6), Color::Reset);
-        // 10%..=89%: light blue.
-        assert_eq!(bg_at(10, 0, 0), UTIL_BG_BUSY);
+        assert_eq!(bg_at(0, 20, 6), Color::Reset);
+        // 1%..=89%: light blue.
+        assert_eq!(bg_at(1, 0, 0), UTIL_BG_BUSY);
         assert_eq!(bg_at(89, 20, 6), UTIL_BG_BUSY);
         // >= 90%: amber, including cells covered by widgets.
         assert_eq!(bg_at(90, 0, 0), UTIL_BG_HIGH);
